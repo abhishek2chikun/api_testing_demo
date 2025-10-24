@@ -288,4 +288,3 @@ def postToJira(epicKey, summary, status) {
     }
 }
 */
-
