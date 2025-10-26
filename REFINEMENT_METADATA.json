@@ -1,0 +1,19 @@
+{
+  "triggered": true,
+  "applied": false,
+  "threshold": 0.9,
+  "average_score": 0.9,
+  "coverage_score": 0.9,
+  "criteria_score": 0.8,
+  "syntax_ok": true,
+  "changes": [
+    {
+      "path": "REVIEW_INFO.txt",
+      "change": "modified",
+      "before_sha256": "f17878127b94ddc495d842f063289b152bb2306df01fd5cb8d1c94d7e2d389a6",
+      "after_sha256": "a548442eaa6b1462981e88e1d74833f3a27f9178021d47aa8c57fe76214ff162",
+      "before_lines": 6,
+      "after_lines": 8
+    }
+  ]
+}
