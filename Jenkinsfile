@@ -14,6 +14,8 @@ pipeline {
             script: "echo ${env.BRANCH_NAME} | cut -d'/' -f3",
             returnStdout: true
         ).trim()
+        // Optional base URL for API under test; can be set at job/branch level
+        BASE_URL = "${params.BASE_URL ?: env.BASE_URL ?: ''}"
     }
     
     stages {
@@ -56,6 +58,34 @@ pipeline {
                     }
                     
                     echo "Test Framework: ${env.TEST_FRAMEWORK}"
+                }
+            }
+        }
+
+        stage('Resolve Base URL') {
+            when {
+                expression { env.TEST_TYPE == 'java' }
+            }
+            steps {
+                script {
+                    // Compute a best-effort BASE_URL
+                    def defaultUrl = 'http://localhost:8002'
+                    def resolved = env.BASE_URL?.trim()
+                    if (!resolved || resolved == 'null') {
+                        // Try to sniff from repo files (optional)
+                        if (fileExists('src/test/resources/config.properties')) {
+                            def content = readFile('src/test/resources/config.properties')
+                            def m = (content =~ /(?m)^baseUrl\s*=\s*(.+)\s*$/)
+                            if (m.find()) {
+                                resolved = m.group(1).trim()
+                            }
+                        }
+                    }
+                    if (!resolved || resolved == 'null') {
+                        resolved = defaultUrl
+                    }
+                    env.RESOLVED_BASE_URL = resolved
+                    echo "BASE_URL resolved to: ${env.RESOLVED_BASE_URL}"
                 }
             }
         }
@@ -144,8 +174,18 @@ pipeline {
             steps {
                 echo "🧪 Running Java tests..."
                 sh '''
-                    # Run Maven tests (continue even if some tests fail)
-                    mvn clean test -Dmaven.test.failure.ignore=true
+                    set -e
+                    BASE_URL_TO_USE="${RESOLVED_BASE_URL}"
+                    echo "Using BASE_URL=${BASE_URL_TO_USE}"
+                    
+                    # Quick reachability probe (non-fatal)
+                    if command -v curl >/dev/null 2>&1; then
+                        echo "Probing ${BASE_URL_TO_USE} ..."
+                        curl -s -o /dev/null -m 3 -w "HTTP %{http_code}\n" "$BASE_URL_TO_USE" || true
+                    fi
+                    
+                    # Run Maven tests and pass baseUrl system property; continue even if tests fail
+                    mvn clean test -Dmaven.test.failure.ignore=true -DbaseUrl="$BASE_URL_TO_USE"
                     
                     echo "✓ Java tests completed"
                 '''
