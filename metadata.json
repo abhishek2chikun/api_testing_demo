@@ -1,0 +1,46 @@
+{
+  "issue_key": "KAN-12",
+  "language": "python",
+  "gate": {
+    "should_proceed": true,
+    "reason": "OpenAPI URL is present and accessible, and key endpoints are clearly defined."
+  },
+  "test_cases": {
+    "tests/conftest.py": "import pytest\nimport requests\nfrom uuid import uuid4\n\nBASE_URL = \"http://localhost:8002\"\n\n@pytest.fixture\ndef unique_order_id():\n    \"\"\"Generate a unique order ID for testing.\"\"\"\n    return f\"order-{uuid4()}\"\n\n@pytest.fixture\ndef valid_broker():\n    \"\"\"Provide a valid broker name.\"\"\"\n    return \"upstox\"\n\n@pytest.fixture\ndef valid_user_id():\n    \"\"\"Provide a valid user ID.\"\"\"\n    return 12345\n\n@pytest.fixture\ndef valid_order_payload():\n    \"\"\"Provide a valid order payload.\"\"\"\n    return {\n        \"tradingsymbol\": \"INFY\",\n        \"quantity\": 10,\n        \"order_type\": \"LIMIT\",\n        \"price\": 1500.0\n    }",
+    "tests/test_orders.py": "import pytest\nimport requests\nfrom uuid import uuid4\n\nBASE_URL = \"http://localhost:8002\"\n\ndef test_place_order_success(valid_broker, valid_user_id, valid_order_payload):\n    \"\"\"Test successful order placement with valid data.\"\"\"\n    response = requests.post(f\"{BASE_URL}/orders\", params={\n        \"broker\": valid_broker,\n        \"user_id\": valid_user_id,\n        \"use_cache\": True\n    }, json=valid_order_payload)\n    assert response.status_code == 200\n    assert \"order_id\" in response.json()\n\ndef test_place_order_validation_error(valid_broker, valid_user_id):\n    \"\"\"Test order placement with invalid data (missing required fields).\"\"\"\n    invalid_payload = {\n        \"tradingsymbol\": \"INFY\",\n        \"quantity\": 0  # Invalid quantity\n    }\n    response = requests.post(f\"{BASE_URL}/orders\", params={\n        \"broker\": valid_broker,\n        \"user_id\": valid_user_id,\n        \"use_cache\": True\n    }, json=invalid_payload)\n    assert response.status_code == 422\n\ndef test_get_order_not_found(valid_broker, valid_user_id, unique_order_id):\n    \"\"\"Test retrieving a non-existent order (404).\"\"\"\n    response = requests.get(f\"{BASE_URL}/orders/{unique_order_id}\", params={\n        \"broker\": valid_broker,\n        \"user_id\": valid_user_id,\n        \"use_cache\": True\n    })\n    assert response.status_code == 404\n\ndef test_list_orders_success(valid_broker, valid_user_id):\n    \"\"\"Test listing orders for a user with valid data.\"\"\"\n    response = requests.get(f\"{BASE_URL}/orders\", params={\n        \"broker\": valid_broker,\n        \"user_id\": valid_user_id,\n        \"use_cache\": True\n    })\n    assert response.status_code == 200\n    assert isinstance(response.json(), list)\n\ndef test_service_metadata():\n    \"\"\"Test retrieving service metadata.\"\"\"\n    response = requests.get(f\"{BASE_URL}/\")\n    assert response.status_code == 200\n    assert \"available_brokers\" in response.json()\n\ndef test_health_check():\n    \"\"\"Test the health check endpoint.\"\"\"\n    response = requests.get(f\"{BASE_URL}/health\")\n    assert response.status_code == 200\n    assert response.json() == {\"status\": \"healthy\"}",
+    "tests/test_schemathesis.py": "import schemathesis\nimport pytest\n\nschema = schemathesis.from_uri(\"http://localhost:8002/openapi.json\")\n\n@schema.parametrize()\ndef test_api_compliance(case):\n    \"\"\"Test API compliance with the OpenAPI specification.\"\"\"\n    response = case.call_and_validate()\n    assert response.status_code in {200, 400, 404, 422, 500}",
+    "tests/README.md": "# Orders Service API Tests\n\n## Overview\n\nThis test suite is designed to validate the Orders Service API, which allows placing and retrieving orders across multiple brokers. The tests cover various scenarios including successful requests, validation errors, not found errors, and service metadata retrieval.\n\n## Test Structure\n\n- `conftest.py`: Contains common fixtures used across tests.\n- `test_orders.py`: Contains tests for order placement, retrieval, and listing.\n- `test_schemathesis.py`: Uses Schemathesis to validate the API against its OpenAPI specification.\n\n## Running the Tests\n\n1. Ensure the Orders Service is running locally on port 8002.\n2. Install the required dependencies:\n   ```bash\n   pip install -r requirements.txt\n   ```\n3. Run the tests using pytest:\n   ```bash\n   pytest\n   ```\n\n## Dependencies\n\n- `pytest`: For running the test suite.\n- `requests`: For making HTTP requests in tests.\n- `schemathesis`: For property-based testing against the OpenAPI specification.\n\n## Notes\n\n- Ensure that the OpenAPI specification is accessible at `http://localhost:8002/openapi.json`.\n- The service should be configured to allow CORS for all origins during testing.",
+    "tests/requirements.txt": "pytest\nrequests\nschemathesis"
+  },
+  "reviewer": {
+    "score": 0.85,
+    "syntax_ok": true,
+    "coverage_score": 0.8,
+    "criteria_score": 0.9,
+    "notes": "The tests cover most of the endpoints, but there are missing tests for authentication/authorization enforcement and error response validation. Additionally, the test for order placement does not validate the response structure for error cases. The test for service metadata does not check for the specific structure of the response. Consider adding tests for authentication and ensuring error responses follow the API standards.",
+    "files": {
+      "tests/test_orders.py": "def test_place_order_auth_error(valid_broker, valid_user_id):\n    \"\"\"Test order placement without authentication (expected 404).\"\"\"\n    response = requests.post(f\"{BASE_URL}/orders\", params={\n        \"broker\": valid_broker,\n        \"user_id\": valid_user_id,\n        \"use_cache\": True\n    }, json={})\n    assert response.status_code == 404\n\n\ndef test_order_error_response_structure(valid_broker, valid_user_id):\n    \"\"\"Test order placement with invalid data (missing required fields) and validate error response structure.\"\"\"\n    invalid_payload = {\n        \"tradingsymbol\": \"INFY\",\n        \"quantity\": 0  # Invalid quantity\n    }\n    response = requests.post(f\"{BASE_URL}/orders\", params={\n        \"broker\": valid_broker,\n        \"user_id\": valid_user_id,\n        \"use_cache\": True\n    }, json=invalid_payload)\n    assert response.status_code == 422\n    error_response = response.json()\n    assert \"status\" in error_response\n    assert \"message\" in error_response\n    assert \"detail\" in error_response\n    assert \"path\" in error_response\n\n\ndef test_service_metadata_structure():\n    \"\"\"Test retrieving service metadata and validate response structure.\"\"\"\n    response = requests.get(f\"{BASE_URL}/\")\n    assert response.status_code == 200\n    metadata = response.json()\n    assert \"available_brokers\" in metadata\n    assert isinstance(metadata[\"available_brokers\"], list)"
+    }
+  },
+  "review_average": 0.9,
+  "review_threshold": 0.9,
+  "refiner_output": {},
+  "refinement_metadata": {
+    "triggered": true,
+    "applied": false,
+    "threshold": 0.9,
+    "average_score": 0.9,
+    "coverage_score": 0.8,
+    "criteria_score": 0.9,
+    "syntax_ok": true,
+    "changes": []
+  },
+  "contract_summary": {
+    "has_openapi_spec": true,
+    "openapi_url": "http://localhost:8002/openapi.json",
+    "title": "Orders Service",
+    "version": "3.1.0",
+    "paths_count": 4,
+    "endpoints_listed_count": null
+  }
+}
